@@ -3,7 +3,6 @@ package com.loramaster.core;
 public class PacketInfo {
     private double rssi; 
     private double snr;
-    private int bitErrors;
     private double distance; // расстояние до источника сигнала в метрах
     private Double latitude;  // широта
     private Double longitude; // долгота
@@ -15,7 +14,6 @@ public class PacketInfo {
                       Double latitude, Double longitude, String timestamp) {
         this.rssi = rssi;
         this.snr = snr;
-        this.bitErrors = bitErrors;
         this.distance = distance;
         this.latitude = latitude;
         this.longitude = longitude;
@@ -27,9 +25,6 @@ public class PacketInfo {
 
     public double getSnr() { return snr; }
     public void setSnr(double snr) { this.snr = snr; }
-
-    public int getBitErrors() { return bitErrors; }
-    public void setBitErrors(int bitErrors) { this.bitErrors = bitErrors; }
 
     public double getDistance() { return distance; }
     public void setDistance(double distance) { this.distance = distance; }

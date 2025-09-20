@@ -14,7 +14,7 @@ public class PacketProcessor {
         try {
             // пример строки: "RSSI=-120;SNR=7;ERR=0;DIST=1234;LAT=55.75;LON=37.61"
             String[] parts = line.split(";");
-            int rssi = 0, snr = 0, errors = 0, distance = 0;
+            int rssi = 0, snr = 0, distance = 0;
             double lat = 0, lon = 0;
 
             for (String p : parts) {
@@ -26,9 +26,6 @@ public class PacketProcessor {
                         break;
                     case "SNR":
                         snr = Integer.parseInt(kv[1]);
-                        break;
-                    case "ERR":
-                        errors = Integer.parseInt(kv[1]);
                         break;
                     case "DIST":
                         distance = Integer.parseInt(kv[1]);
@@ -46,7 +43,6 @@ public class PacketProcessor {
             packet.setTimestamp(LocalDateTime.now().toString());
             packet.setRssi(rssi);
             packet.setSnr(snr);
-            packet.setBitErrors(errors);
             packet.setDistance(distance);
             packet.setLatitude(lat);
             packet.setLongitude(lon);

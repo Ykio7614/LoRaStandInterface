@@ -1,57 +1,66 @@
 package com.loramaster.communication;
 
-import io.socket.client.IO;
-import io.socket.client.Socket;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.net.URISyntaxException;
-import java.util.function.Consumer;
+import java.io.*;
+import java.net.Socket;
+import java.net.UnknownHostException;
 
 public class ServerClient {
     private static final Logger logger = LoggerFactory.getLogger(ServerClient.class);
 
     private Socket socket;
+    private BufferedReader in;
+    private PrintWriter out;
 
-    public void connect(String url, Consumer<String> onMessage, Runnable onConnect, Runnable onDisconnect) {
+    public boolean connect(String host, int port) {
         try {
-            IO.Options options = new IO.Options();
-            options.reconnection = true;
-            socket = IO.socket(url, options);
-
-            socket.on(Socket.EVENT_CONNECT, args -> {
-                logger.info("Connected to server: {}", url);
-                onConnect.run();
-            });
-
-            socket.on(Socket.EVENT_DISCONNECT, args -> {
-                logger.info("Disconnected from server");
-                onDisconnect.run();
-            });
-
-            socket.on("message", args -> {
-                if (args.length > 0 && args[0] instanceof String) {
-                    onMessage.accept((String) args[0]);
-                }
-            });
-
-            socket.connect();
-        } catch (URISyntaxException e) {
-            logger.error("Invalid server URL", e);
+            socket = new Socket(host, port);
+            in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+            out = new PrintWriter(socket.getOutputStream(), true);
+            logger.info("Connected to {}:{}", host, port);
+            return true;
+        } catch (UnknownHostException e) {
+            logger.error("Unknown host: {}", host, e);
+            return false;
+        } catch (IOException e) {
+            logger.error("I/O error when connecting to {}:{}", host, port, e);
+            return false;
         }
     }
 
-    public void sendMessage(String event, Object data) {
-        if (socket != null && socket.connected()) {
-            socket.emit(event, data);
+    public void sendMessage(String message) {
+        if (out != null) {
+            out.println(message);
+            logger.info("Sent message: {}", message);
+        } else {
+            logger.warn("Output stream is not initialized.");
         }
+    }
+
+    public String receiveMessage() {
+        if (in != null) {
+            try {
+                String message = in.readLine();
+                logger.info("Received message: {}", message);
+                return message;
+            } catch (IOException e) {
+                logger.error("Error reading message", e);
+            }
+        } else {
+            logger.warn("Input stream is not initialized.");
+        }
+        return null;
     }
 
     public void disconnect() {
-        if (socket != null) {
-            socket.disconnect();
-            socket.close();
+        try {
+            if(socket != null && !socket.isClosed()) {
+                socket.close();
+                logger.info("Disconnected from server.");
+            }
+        } catch (IOException e) {
+            logger.error("Error closing connection", e);
         }
     }
-
 }

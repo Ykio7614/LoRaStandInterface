@@ -31,4 +31,9 @@ public class DataPanel extends JPanel {
     public void setCurrentSettings(String settingsText) {
         currentSettingsLabel.setText(settingsText);
     }
+
+    public void addMeasurementRow(String[] rowData) {
+        DefaultTableModel model = getTableModel();
+        model.addRow(rowData);
+    }
 }

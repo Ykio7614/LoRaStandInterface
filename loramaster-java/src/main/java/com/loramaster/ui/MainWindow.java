@@ -18,6 +18,8 @@ public class MainWindow extends JFrame {
         dataPanel = new DataPanel();
         mapPanel = new MapPanel();
 
+        connectionPanel.setDataPanel(dataPanel);
+
         tabbedPane.addTab("Подключение", connectionPanel);
         tabbedPane.addTab("Данные", dataPanel);
         tabbedPane.addTab("Карта", mapPanel);

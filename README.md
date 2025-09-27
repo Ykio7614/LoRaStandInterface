@@ -12,4 +12,4 @@ java -jar target/lorareceiver-1.0-SNAPSHOT-jar-with-dependencies.jar
 
 2. Запуск релиза (нужен только jre)
 
-
+Инитрукция в релизе

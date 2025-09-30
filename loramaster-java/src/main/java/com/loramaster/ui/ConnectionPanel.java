@@ -162,7 +162,7 @@ public class ConnectionPanel extends JPanel {
                         });
                     }
                 });
-                boolean connected = socketManager.connect("localhost", 8080);
+                boolean connected = socketManager.connect("localhost", 8082);
                 SwingUtilities.invokeLater(() -> setConnectionStatus(connected));
                 if (connected) {
                     socketManager.sendMessage("GET_MEASUREMENT_SESSIONS");

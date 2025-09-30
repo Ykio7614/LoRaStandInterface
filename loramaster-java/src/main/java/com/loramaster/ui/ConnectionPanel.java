@@ -187,10 +187,10 @@ public class ConnectionPanel extends JPanel {
         addSessionBtn.addActionListener(e -> {
             String sessionName = JOptionPane.showInputDialog(ConnectionPanel.this, "Введите название сессии:");
             if (sessionName == null || sessionName.trim().isEmpty()) return;
-            String today = java.time.LocalDate.now().toString();
+            String today = java.time.LocalDateTime.now().toString();
 
             String points = "0";
-            String sessionId = "Session" + System.currentTimeMillis();
+            String sessionId = String.valueOf(System.currentTimeMillis());
 
             String addCommand = "ADD_SESSION: [" 
                     + sessionId + ", " 

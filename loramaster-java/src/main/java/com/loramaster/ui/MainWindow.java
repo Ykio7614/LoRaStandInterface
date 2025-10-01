@@ -8,13 +8,12 @@ public class MainWindow extends JFrame {
     private final DataPanel dataPanel;
     private final MapPanel mapPanel;
 
-    public MainWindow() {
+    public MainWindow(int localPort) {
         super("LoRa Receiver Client");
 
         // Создаём вкладки
         JTabbedPane tabbedPane = new JTabbedPane();
-
-        connectionPanel = new ConnectionPanel();
+        connectionPanel = new ConnectionPanel(localPort);
         dataPanel = new DataPanel();
         mapPanel = new MapPanel();
 
@@ -44,8 +43,19 @@ public class MainWindow extends JFrame {
     }
 
     public static void main(String[] args) {
+        int localPort = 0; //авт
+
+        if (args.length > 0) {
+            try {
+                localPort = Integer.parseInt(args[0]);
+            } catch (NumberFormatException e) {
+                System.err.println("Invalid port number provided. Using default port 0.");
+            }
+        }
+
+        final int finalLocalPort = localPort;
         SwingUtilities.invokeLater(() -> {
-            MainWindow window = new MainWindow();
+            MainWindow window = new MainWindow(finalLocalPort);
             window.setVisible(true);
         });
     }

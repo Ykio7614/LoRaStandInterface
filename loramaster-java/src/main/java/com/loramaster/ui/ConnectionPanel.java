@@ -56,8 +56,10 @@ public class ConnectionPanel extends JPanel {
 
     private SocketManager socketManager;
     private DataPanel dataPanel;
+    private int localPort;
 
-    public ConnectionPanel() {
+    public ConnectionPanel(int localPort) {
+        this.localPort = localPort;
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(2, 5, 2, 5);
@@ -162,7 +164,13 @@ public class ConnectionPanel extends JPanel {
                         });
                     }
                 });
-                boolean connected = socketManager.connect("localhost", 8082);
+                boolean connected;
+                if (localPort > 0) {
+                    connected = socketManager.connect("localhost", 8082, localPort);
+                } else {
+                    connected = socketManager.connect("localhost", 8082);
+                }
+
                 SwingUtilities.invokeLater(() -> setConnectionStatus(connected));
                 if (connected) {
                     socketManager.sendMessage("GET_MEASUREMENT_SESSIONS");

@@ -43,7 +43,7 @@ public class MainWindow extends JFrame {
     }
 
     public static void main(String[] args) {
-        int localPort = 0; //авт
+        int localPort = 0; //автоматический выбор порта
 
         if (args.length > 0) {
             try {

@@ -204,8 +204,8 @@ public class ConnectionPanel extends JPanel {
         addSessionBtn.addActionListener(e -> {
             String sessionName = JOptionPane.showInputDialog(ConnectionPanel.this, "Введите название сессии:");
             if (sessionName == null || sessionName.trim().isEmpty()) return;
-            String today = java.time.LocalDateTime.now().toString();
 
+            String today = java.time.LocalDateTime.now().toString();
             String points = "0";
             String sessionId = String.valueOf(System.currentTimeMillis());
 
@@ -217,6 +217,8 @@ public class ConnectionPanel extends JPanel {
                     + points + "]";
 
             socketManager.sendMessage(addCommand);
+
+            socketManager.sendMessage("GET_MEASUREMENT_SESSIONS");
         });
 
 
@@ -225,14 +227,24 @@ public class ConnectionPanel extends JPanel {
             if (viewRow >= 0) {
                 int modelRow = sessionsTable.convertRowIndexToModel(viewRow);
                 String sessionId = (String) sessionsTableModel.getValueAt(modelRow, 0);
-                int confirm = JOptionPane.showConfirmDialog(ConnectionPanel.this, "Удалить сессию с ID: " + sessionId + "?", "Подтверждение удаления", JOptionPane.YES_NO_OPTION);
+                String sessionName = (String) sessionsTableModel.getValueAt(modelRow, 1);
+                int confirm = JOptionPane.showConfirmDialog(ConnectionPanel.this,
+                        "Удалить сессию с именем: " + sessionName + "?",
+                        "Подтверждение удаления",
+                        JOptionPane.YES_NO_OPTION);
                 if (confirm == JOptionPane.YES_OPTION) {
                     socketManager.sendMessage("REMOVE_SESSION: " + sessionId);
+
+                    socketManager.sendMessage("GET_MEASUREMENT_SESSIONS");
                 }
             } else {
-                JOptionPane.showMessageDialog(ConnectionPanel.this, "Пожалуйста, выберите сессию для удаления", "Ошибка", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(ConnectionPanel.this,
+                        "Пожалуйста, выберите сессию для удаления",
+                        "Ошибка",
+                        JOptionPane.ERROR_MESSAGE);
             }
         });
+        
 
         setSettingsBtn.addActionListener(e -> {
             String sf = sfField.getText();

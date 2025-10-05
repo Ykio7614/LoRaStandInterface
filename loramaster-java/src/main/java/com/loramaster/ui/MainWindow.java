@@ -11,11 +11,10 @@ public class MainWindow extends JFrame {
     public MainWindow(int localPort) {
         super("LoRa Receiver Client");
 
-        // Создаём вкладки
         JTabbedPane tabbedPane = new JTabbedPane();
         connectionPanel = new ConnectionPanel(localPort);
         dataPanel = new DataPanel();
-        mapPanel = new MapPanel();
+        mapPanel = new MapPanel(dataPanel);
 
         connectionPanel.setDataPanel(dataPanel);
 
@@ -43,7 +42,7 @@ public class MainWindow extends JFrame {
     }
 
     public static void main(String[] args) {
-        int localPort = 0; //автоматический выбор порта
+        int localPort = 0;
 
         if (args.length > 0) {
             try {

@@ -1,158 +1,201 @@
 package com.loramaster.ui;
 
-import org.geotools.data.FileDataStore;
-import org.geotools.data.FileDataStoreFinder;
-import org.geotools.data.collection.ListFeatureCollection;
-import org.geotools.data.simple.SimpleFeatureSource;
-import org.geotools.feature.simple.SimpleFeatureBuilder;
-import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
-import org.geotools.geometry.jts.JTSFactoryFinder;
-import org.geotools.map.FeatureLayer;
-import org.geotools.map.Layer;
-import org.geotools.map.MapContent;
-import org.geotools.styling.*;
-import org.geotools.swing.JMapFrame;
-import org.geotools.swing.JMapPane;
-import org.locationtech.jts.geom.*;
-import org.opengis.feature.simple.SimpleFeature;
-import org.opengis.feature.simple.SimpleFeatureType;
-
 import javax.swing.*;
-import java.awt.Color;
-import java.awt.BorderLayout;
-import java.io.File;
-import java.util.Collections;
+import java.awt.*;
+import java.io.*;
+import javafx.application.Platform;
+import javafx.embed.swing.JFXPanel;
+import javafx.scene.Scene;
+import javafx.scene.web.WebEngine;
+import javafx.scene.web.WebView;
+import org.json.JSONArray;
 
 public class MapPanel extends JPanel {
+    private JFXPanel jfxPanel;
+    private WebEngine webEngine;
+    private JButton generateButton;
+    private DataPanel dataPanel;
 
-    private static final String DATA_DIR = "D:/map/try_map_geo/shapefiles/spb_city/data";
+    private static final String JSON_DIRECTORY = "generated_jsons";
+    private static final String MAP_DIRECTORY = "generated_maps";
 
-    public MapPanel() {
-        super(new BorderLayout());
+    public MapPanel(DataPanel dataPanel) {
+        this.dataPanel = dataPanel;
+        initializeUI();
+    }
 
-        try {
-            File folder = new File(DATA_DIR);
-            if (!folder.exists()) {
-                System.err.println("Нет папки: " + DATA_DIR);
-                add(new JLabel("Нет папки: " + DATA_DIR), BorderLayout.CENTER);
-                return;
+    private void initializeUI() {
+        setLayout(new BorderLayout());
+
+        // Панель с кнопкой
+        JPanel controlPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        generateButton = new JButton("Сгенерировать карту");
+        controlPanel.add(generateButton);
+        add(controlPanel, BorderLayout.NORTH);
+
+        // Создаем слой для webview + полоски
+        JLayeredPane layeredPane = new JLayeredPane();
+        add(layeredPane, BorderLayout.CENTER);
+
+        // JFXPanel с WebView
+        jfxPanel = new JFXPanel();
+        jfxPanel.setBounds(0, 0, 800, 600); // ширина/высота будут обновляться позже
+        layeredPane.add(jfxPanel, JLayeredPane.DEFAULT_LAYER);
+
+        // Полоска снизу поверх webview
+        JPanel bottomBar = new JPanel();
+        bottomBar.setBackground(Color.WHITE);
+        bottomBar.setBounds(0, 580, 800, 20); // 20px высота, позиция снизу
+        bottomBar.setOpaque(true);
+        layeredPane.add(bottomBar, JLayeredPane.PALETTE_LAYER); // выше DEFAULT_LAYER
+
+        // Обновляем размеры при изменении панели
+        addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                int w = getWidth();
+                int h = getHeight() - controlPanel.getHeight();
+                jfxPanel.setBounds(0, 0, w, h);
+                bottomBar.setBounds(0, h - 20, w, 20);
             }
+        });
 
-            MapContent map = new MapContent();
-            map.setTitle("СПб + тепловые зоны");
+        Platform.runLater(this::initializeWebView);
 
-            File[] shpFiles = folder.listFiles((dir, name) -> name.toLowerCase().endsWith(".shp"));
-            if (shpFiles == null || shpFiles.length == 0) {
-                System.err.println("Нет .shp файлов в папке " + DATA_DIR);
-                add(new JLabel("Нет .shp файлов в папке " + DATA_DIR), BorderLayout.CENTER);
-                return;
-            }
+        generateButton.addActionListener(e -> generateMap());
+    }
 
-            StyleBuilder sb = new StyleBuilder();
+    private void initializeWebView() {
+        WebView webView = new WebView();
+        webEngine = webView.getEngine();
 
-            for (File shp : shpFiles) {
-                FileDataStore store = FileDataStoreFinder.getDataStore(shp);
-                SimpleFeatureSource featureSource = store.getFeatureSource();
-                String geomType = featureSource.getSchema().getGeometryDescriptor().getType().getBinding().getSimpleName();
+        webEngine.loadContent(
+            "<html><body style='display:flex;justify-content:center;align-items:center;height:100vh;margin:0;'>" +
+            "<div style='text-align:center;color:#666;'>" +
+            "<h2>Карта не загружена</h2>" +
+            "<p>JSON будет сохранён в директории: " + JSON_DIRECTORY + "</p>" +
+            "<p>HTML карта будет сохранена в директории: " + MAP_DIRECTORY + "</p>" +
+            "</div></body></html>"
+        );
 
-                Style style;
-                if (geomType.equalsIgnoreCase("Point") || geomType.equalsIgnoreCase("MultiPoint")) {
-                    style = createPointStyle(sb);
-                } else if (geomType.equalsIgnoreCase("LineString") || geomType.equalsIgnoreCase("MultiLineString")) {
-                    style = createLineStyle(sb);
-                } else if (geomType.equalsIgnoreCase("Polygon") || geomType.equalsIgnoreCase("MultiPolygon")) {
-                    style = createPolygonStyle(sb);
-                } else {
-                    style = SLD.createSimpleStyle(featureSource.getSchema());
+        Scene scene = new Scene(webView);
+        jfxPanel.setScene(scene);
+    }
+
+    private void generateMap() {
+    if (dataPanel == null) {
+        JOptionPane.showMessageDialog(this, "DataPanel не подключена", "Ошибка", JOptionPane.ERROR_MESSAGE);
+        return;
+    }
+
+    new SwingWorker<Void, Void>() {
+        @Override
+        protected Void doInBackground() {
+            // Используем final для переменных, чтобы их можно было использовать в лямбде
+            final File jsonDir = new File(JSON_DIRECTORY);
+            final File mapDir = new File(MAP_DIRECTORY);
+
+            try {
+                if (!jsonDir.exists()) jsonDir.mkdirs();
+                if (!mapDir.exists()) mapDir.mkdirs();
+
+                final File jsonFile = new File(jsonDir, "measurements.json");
+                JSONArray measurements = dataPanel.getMeasurementsAsJson();
+                try (FileWriter writer = new FileWriter(jsonFile)) {
+                    writer.write(measurements.toString(2));
+                }
+                System.out.println("[DEBUG] JSON сохранён: " + jsonFile.getAbsolutePath());
+
+                final File htmlFile = new File(mapDir, "map.html");
+
+                // Запуск Python скрипта
+                String pythonPath = "/usr/local/bin/python3";
+                File jarDir = new File(MapPanel.class
+                        .getProtectionDomain()
+                        .getCodeSource()
+                        .getLocation()
+                        .toURI())
+                        .getParentFile();
+
+                File pythonScript = new File(jarDir, "map_generator.py");
+                if (!pythonScript.exists()) {
+                    SwingUtilities.invokeLater(() ->
+                            JOptionPane.showMessageDialog(MapPanel.this,
+                                    "Скрипт map_generator.py не найден в " + jarDir,
+                                    "Ошибка", JOptionPane.ERROR_MESSAGE));
+                    return null;
                 }
 
-                Layer layer = new FeatureLayer(featureSource, style);
-                map.addLayer(layer);
+                ProcessBuilder pb = new ProcessBuilder(
+                        pythonPath,
+                        pythonScript.getAbsolutePath(),
+                        jsonFile.getAbsolutePath(),
+                        htmlFile.getAbsolutePath()
+                );
+                pb.directory(jarDir);
+                pb.redirectErrorStream(true);
+
+                Process process = pb.start();
+                try (BufferedReader reader = new BufferedReader(
+                        new InputStreamReader(process.getInputStream()))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        System.out.println("[PYTHON] " + line);
+                    }
+                }
+                int exitCode = process.waitFor();
+                System.out.println("[DEBUG] Python завершился с кодом: " + exitCode);
+
+                if (exitCode == 0 && htmlFile.exists()) {
+                    Platform.runLater(() -> {
+                        String url = "file:///" + htmlFile.getAbsolutePath().replace("\\", "/");
+                        webEngine.load(url);
+
+                        // Удаляем папки после загрузки
+                        new Thread(() -> {
+                            try {
+                                Thread.sleep(2000);
+                                deleteDirectoryRecursively(jsonDir);
+                                deleteDirectoryRecursively(mapDir);
+                                System.out.println("[DEBUG] Временные папки удалены");
+                            } catch (InterruptedException ignored) {}
+                        }).start();
+                    });
+                } else {
+                    Platform.runLater(() -> {
+                        webEngine.loadContent("<h2 style='color:red'>Ошибка генерации карты</h2>");
+                    });
+                }
+
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                Platform.runLater(() -> {
+                    webEngine.loadContent("<h2 style='color:red'>Исключение: " + ex.getMessage() + "</h2>");
+                });
             }
+            return null;
+        }
+    }.execute();
+}
 
-            // 🔥 Добавляем тепловую область в районе (59.94, 30.46)
-            Layer heatLayer = createHeatLayer(59.94, 30.46, 2000); // радиус ~2000 м
-            map.addLayer(heatLayer);
 
-            // --- вместо JMapFrame.showMap(map) — создаём JMapFrame и берем из него JMapPane ---
-            JMapFrame mapFrame = new JMapFrame(map);
-            mapFrame.enableToolBar(true);
-            mapFrame.enableStatusBar(true);
-
-            // достаём тулбар (если нужен) и панель карты
-            JToolBar toolBar = mapFrame.getToolBar();
-            JMapPane mapPane = mapFrame.getMapPane();
-
-            if (toolBar != null) {
-                add(toolBar, BorderLayout.NORTH);
+    private void deleteDirectoryRecursively(File dir) {
+        if (dir != null && dir.exists()) {
+            File[] files = dir.listFiles();
+            if (files != null) {
+                for (File file : files) {
+                    if (file.isDirectory()) {
+                        deleteDirectoryRecursively(file);
+                    } else {
+                        file.delete();
+                    }
+                }
             }
-            add(mapPane, BorderLayout.CENTER);
-            // не делаем mapFrame.setVisible(true) — окно не открываем, только используем его компоненты
-
-        } catch (Exception e) {
-            e.printStackTrace();
-            add(new JLabel("Ошибка загрузки карты: " + e.getMessage()), BorderLayout.CENTER);
+            dir.delete();
         }
     }
 
-    /** Стиль для линий */
-    private static Style createLineStyle(StyleBuilder sb) {
-        Stroke stroke = sb.createStroke(Color.BLUE, 1.5);
-        LineSymbolizer sym = sb.createLineSymbolizer(stroke);
-        return sb.createStyle(sym);
-    }
-
-    /** Стиль для полигонов */
-    private static Style createPolygonStyle(StyleBuilder sb) {
-        Stroke stroke = sb.createStroke(Color.BLACK, 0.8);
-        Fill fill = sb.createFill(Color.CYAN, 0.4);
-        PolygonSymbolizer sym = sb.createPolygonSymbolizer(stroke, fill);
-        return sb.createStyle(sym);
-    }
-
-    /** Стиль для точек */
-    private static Style createPointStyle(StyleBuilder sb) {
-        Graphic graphic = sb.createGraphic(
-                null,
-                sb.createMark(StyleBuilder.MARK_CIRCLE, Color.RED, Color.BLACK, 1),
-                null
-        );
-        graphic.setSize(sb.literalExpression(6));
-        PointSymbolizer sym = sb.createPointSymbolizer(graphic);
-        return sb.createStyle(sym);
-    }
-
-    /** Создание слоя с "тепловой областью" */
-    private static Layer createHeatLayer(double lat, double lon, double radiusMeters) throws Exception {
-        GeometryFactory geometryFactory = JTSFactoryFinder.getGeometryFactory();
-
-        // создаем круг вокруг координат
-        Coordinate coord = new Coordinate(lon, lat); // ⚠️ порядок: X=lon, Y=lat
-        Point center = geometryFactory.createPoint(coord);
-
-        // превращаем точку в круг (buffer = радиус в градусах, примерно)
-        // 1 градус ≈ 111 км, поэтому переводим метры → градусы
-        double radiusDegrees = radiusMeters / 111000.0;
-        Polygon circle = (Polygon) center.buffer(radiusDegrees);
-
-        // создаём тип
-        SimpleFeatureTypeBuilder tb = new SimpleFeatureTypeBuilder();
-        tb.setName("HeatArea");
-        tb.add("the_geom", Polygon.class);
-        SimpleFeatureType TYPE = tb.buildFeatureType();
-
-        SimpleFeature feature = SimpleFeatureBuilder.build(TYPE, new Object[]{circle}, null);
-
-        ListFeatureCollection collection = new ListFeatureCollection(TYPE, Collections.singletonList(feature));
-
-        // стиль — прозрачная красная заливка (это тоже оставить так)
-        StyleBuilder sb = new StyleBuilder();
-        Fill fill = sb.createFill(new Color(255, 0, 0, 50)); // полупрозрачный красный
-        fill.setOpacity(sb.literalExpression(0.5)); // 20% непрозрачности
-        Stroke stroke = sb.createStroke(new Color(255, 0, 0, 120), 1.0);
-        PolygonSymbolizer sym = sb.createPolygonSymbolizer(stroke, fill);
-        Style style = sb.createStyle(sym);
-
-        return new FeatureLayer(collection, style);
+    public void setDataPanel(DataPanel dataPanel) {
+        this.dataPanel = dataPanel;
     }
 }

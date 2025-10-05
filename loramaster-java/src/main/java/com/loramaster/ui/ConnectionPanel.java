@@ -153,7 +153,7 @@ public class ConnectionPanel extends JPanel {
                             if (matcher.find()) {
                                 String entry = matcher.group(1);
                                 String[] tokens = entry.split("\\s*,\\s*");
-                                if (tokens.length == 7 && dataPanel != null) {
+                                if (tokens.length == 6 && dataPanel != null) {
                                     SwingUtilities.invokeLater(() -> {
                                         dataPanel.addMeasurementRow(tokens);
                                     });

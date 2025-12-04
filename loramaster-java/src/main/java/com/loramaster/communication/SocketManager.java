@@ -30,6 +30,29 @@ public class SocketManager {
         return connected;
     }
 
+    public boolean connect(String host, int port, int localPort) {
+        client = new ServerClient();
+        boolean connected = client.connect(host, port, localPort);
+        if (connected) {
+            new Thread(() -> {
+                while (true) {
+                    String msg = client.receiveMessage();
+                    if (msg == null) {
+                        for (SocketListener listener : listeners) {
+                            listener.onDisconnect();
+                        }
+                        break;
+                    } else {
+                        for (SocketListener listener : listeners) {
+                            listener.onMessage(msg);
+                        }
+                    }
+                }
+            }).start();
+        }
+        return connected;
+    }
+
     public void sendMessage(String message) {
         if (client != null) {
             client.sendMessage(message);

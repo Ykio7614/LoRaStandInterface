@@ -56,27 +56,44 @@ public class ConnectionPanel extends JPanel {
 
     private SocketManager socketManager;
     private DataPanel dataPanel;
+    private int localPort;
 
-    public ConnectionPanel() {
+    public ConnectionPanel(int localPort) {
+        this.localPort = localPort;
         setLayout(new GridBagLayout());
         GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2, 5, 2, 5);
+        gbc.insets = new Insets(5, 5, 5, 5);
         gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
 
-        gbc.gridx = 0;
-        gbc.gridy = 0;
+        // ---------- Верхняя панель ----------
+        JPanel topPanel = new JPanel(new BorderLayout());
+
+        JPanel leftTopPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         connectServerBtn = new JButton("Подключиться к серверу");
-        add(connectServerBtn, gbc);
-
-        gbc.gridx = 1;
-        gbc.gridy = 0;
         connectionIndicator = new JLabel("Статус: отключено");
         connectionIndicator.setForeground(Color.RED);
-        add(connectionIndicator, gbc);
+        leftTopPanel.add(connectServerBtn);
+        leftTopPanel.add(connectionIndicator);
+
+        JPanel rightTopPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        addSessionBtn = new JButton("Добавить сессию");
+        removeSessionBtn = new JButton("Удалить сессию");
+        rightTopPanel.add(addSessionBtn);
+        rightTopPanel.add(removeSessionBtn);
+
+        topPanel.add(leftTopPanel, BorderLayout.WEST);
+        topPanel.add(rightTopPanel, BorderLayout.EAST);
 
         gbc.gridx = 0;
-        gbc.gridy = 1;
+        gbc.gridy = 0;
         gbc.gridwidth = 2;
+        add(topPanel, gbc);
+
+        // ---------- Таблица ----------
+        gbc.gridy = 1;
+        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
         String[] columnNames = {"ID", "Сессия", "Дата начала", "Дата последнего измерения", "Количество точек"};
         sessionsTableModel = new DefaultTableModel(columnNames, 0);
         sessionsTable = new JTable(sessionsTableModel);
@@ -85,46 +102,40 @@ public class ConnectionPanel extends JPanel {
         JScrollPane scrollPane = new JScrollPane(sessionsTable);
         add(scrollPane, gbc);
 
+        // ---------- Нижняя панель ----------
         gbc.gridy = 2;
-        gbc.gridwidth = 1;
-        gbc.gridx = 0;
-        startMeasurementBtn = new JButton("Измерять");
-        add(startMeasurementBtn, gbc);
+        gbc.weighty = 0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
 
-        gbc.gridy = 3;
-        gbc.gridx = 0;
-        addSessionBtn = new JButton("Добавить сессию");
-        add(addSessionBtn, gbc);
+        JPanel bottomPanel = new JPanel(new BorderLayout());
 
-        gbc.gridx = 1;
-        removeSessionBtn = new JButton("Удалить сессию");
-        add(removeSessionBtn, gbc);
-
-        // Панель для настроек
-        JPanel settingsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        JPanel leftBottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         sfLabel = new JLabel("SF:");
-        settingsPanel.add(sfLabel);
+        leftBottomPanel.add(sfLabel);
         sfField = new JTextField(3);
-        settingsPanel.add(sfField);
+        leftBottomPanel.add(sfField);
 
         txLabel = new JLabel("TX:");
-        settingsPanel.add(txLabel);
+        leftBottomPanel.add(txLabel);
         txField = new JTextField(3);
-        settingsPanel.add(txField);
+        leftBottomPanel.add(txField);
 
         bwLabel = new JLabel("BW:");
-        settingsPanel.add(bwLabel);
+        leftBottomPanel.add(bwLabel);
         bwField = new JTextField(4);
-        settingsPanel.add(bwField);
+        leftBottomPanel.add(bwField);
 
         setSettingsBtn = new JButton("Применить");
-        settingsPanel.add(setSettingsBtn);
+        leftBottomPanel.add(setSettingsBtn);
 
-        gbc.gridy = 4;
-        gbc.gridx = 0;
-        gbc.gridwidth = 2;
-        add(settingsPanel, gbc);
+        JPanel rightBottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
+        startMeasurementBtn = new JButton("Измерять");
+        rightBottomPanel.add(startMeasurementBtn);
 
+        bottomPanel.add(leftBottomPanel, BorderLayout.WEST);
+        bottomPanel.add(rightBottomPanel, BorderLayout.EAST);
+
+        add(bottomPanel, gbc);
 
         connectServerBtn.addActionListener(e -> {
             new Thread(() -> {
@@ -142,7 +153,7 @@ public class ConnectionPanel extends JPanel {
                             if (matcher.find()) {
                                 String entry = matcher.group(1);
                                 String[] tokens = entry.split("\\s*,\\s*");
-                                if (tokens.length == 7 && dataPanel != null) {
+                                if (tokens.length == 6 && dataPanel != null) {
                                     SwingUtilities.invokeLater(() -> {
                                         dataPanel.addMeasurementRow(tokens);
                                     });
@@ -162,7 +173,13 @@ public class ConnectionPanel extends JPanel {
                         });
                     }
                 });
-                boolean connected = socketManager.connect("localhost", 8082);
+                boolean connected;
+                if (localPort > 0) {
+                    connected = socketManager.connect("localhost", 8082, localPort);
+                } else {
+                    connected = socketManager.connect("localhost", 8082);
+                }
+
                 SwingUtilities.invokeLater(() -> setConnectionStatus(connected));
                 if (connected) {
                     socketManager.sendMessage("GET_MEASUREMENT_SESSIONS");
@@ -187,8 +204,8 @@ public class ConnectionPanel extends JPanel {
         addSessionBtn.addActionListener(e -> {
             String sessionName = JOptionPane.showInputDialog(ConnectionPanel.this, "Введите название сессии:");
             if (sessionName == null || sessionName.trim().isEmpty()) return;
-            String today = java.time.LocalDateTime.now().toString();
 
+            String today = java.time.LocalDateTime.now().toString();
             String points = "0";
             String sessionId = String.valueOf(System.currentTimeMillis());
 
@@ -200,6 +217,8 @@ public class ConnectionPanel extends JPanel {
                     + points + "]";
 
             socketManager.sendMessage(addCommand);
+
+            socketManager.sendMessage("GET_MEASUREMENT_SESSIONS");
         });
 
 
@@ -208,14 +227,24 @@ public class ConnectionPanel extends JPanel {
             if (viewRow >= 0) {
                 int modelRow = sessionsTable.convertRowIndexToModel(viewRow);
                 String sessionId = (String) sessionsTableModel.getValueAt(modelRow, 0);
-                int confirm = JOptionPane.showConfirmDialog(ConnectionPanel.this, "Удалить сессию с ID: " + sessionId + "?", "Подтверждение удаления", JOptionPane.YES_NO_OPTION);
+                String sessionName = (String) sessionsTableModel.getValueAt(modelRow, 1);
+                int confirm = JOptionPane.showConfirmDialog(ConnectionPanel.this,
+                        "Удалить сессию с именем: " + sessionName + "?",
+                        "Подтверждение удаления",
+                        JOptionPane.YES_NO_OPTION);
                 if (confirm == JOptionPane.YES_OPTION) {
                     socketManager.sendMessage("REMOVE_SESSION: " + sessionId);
+
+                    socketManager.sendMessage("GET_MEASUREMENT_SESSIONS");
                 }
             } else {
-                JOptionPane.showMessageDialog(ConnectionPanel.this, "Пожалуйста, выберите сессию для удаления", "Ошибка", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(ConnectionPanel.this,
+                        "Пожалуйста, выберите сессию для удаления",
+                        "Ошибка",
+                        JOptionPane.ERROR_MESSAGE);
             }
         });
+        
 
         setSettingsBtn.addActionListener(e -> {
             String sf = sfField.getText();

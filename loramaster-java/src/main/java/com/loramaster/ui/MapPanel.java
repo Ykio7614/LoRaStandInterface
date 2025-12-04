@@ -109,7 +109,7 @@ public class MapPanel extends JPanel {
                 final File htmlFile = new File(mapDir, "map.html");
 
                 // Запуск Python скрипта
-                String pythonPath = "/usr/local/bin/python3";
+                String pythonPath = "python"; // или полный путь к python.exe
                 File jarDir = new File(MapPanel.class
                         .getProtectionDomain()
                         .getCodeSource()

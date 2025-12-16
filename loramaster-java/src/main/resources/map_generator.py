@@ -27,7 +27,7 @@ def create_map(json_file, output_file):
         first_point = packets_with_coords[0]
         print("[INFO] Создаем карту...")
 
-        # CartoDB Light (через Fastly) — часто работает без VPN
+        # CartoDB Light (через Fastly) 
         tiles = "https://cartodb-basemaps-a.global.ssl.fastly.net/light_all/{z}/{x}/{y}.png"
         attr = "© OpenStreetMap contributors, © CartoDB"
 
@@ -40,7 +40,6 @@ def create_map(json_file, output_file):
         )
         print("[INFO] Карта создана")
 
-        # Форматирование чисел "как во втором примере"
         def fmt(value, precision=2):
             if value is None:
                 return "-"
@@ -49,7 +48,6 @@ def create_map(json_file, output_file):
             except (ValueError, TypeError):
                 return "-"
 
-        # Добавляем маркеры
         for idx, packet in enumerate(packets_with_coords, start=1):
             distance = fmt(packet.get('distance'), 2)
             rssi = fmt(packet.get('rssi'), 0)
@@ -65,7 +63,6 @@ def create_map(json_file, output_file):
             </div>
             """
 
-            # Цвет маркера по качеству сигнала (RSSI)
             color = "blue"
             rssi_value = packet.get("rssi")
             if rssi_value is not None:
@@ -90,14 +87,12 @@ def create_map(json_file, output_file):
             if idx % 50 == 0 or idx == len(packets_with_coords):
                 print(f"[INFO] Добавлено маркеров: {idx}/{len(packets_with_coords)}")
 
-        # (Опционально) белая полоска снизу, как в твоей первой версии
         footer_html = """
         <div style='position: fixed; bottom: 0; left: 0; width: 100%; height: 40px;
                     background-color: white; z-index: 1000;'></div>
         """
         m.get_root().html.add_child(folium.Element(footer_html))
 
-        # Сохраняем карту
         out_dir = os.path.dirname(output_file)
         if out_dir:
             os.makedirs(out_dir, exist_ok=True)

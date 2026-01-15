@@ -76,7 +76,7 @@ public class DataPanel extends JPanel {
                 if (!snrStr.isEmpty()) measurement.put("snr", Double.parseDouble(snrStr));
 
                 String errorsStr = model.getValueAt(i, 3).toString();
-                if (!errorsStr.isEmpty()) measurement.put("hDop", Integer.parseInt(errorsStr));
+                if (!errorsStr.isEmpty()) measurement.put("hDop", Float.parseFloat(errorsStr));
 
                 
 

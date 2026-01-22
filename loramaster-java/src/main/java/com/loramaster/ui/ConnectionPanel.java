@@ -81,7 +81,7 @@ public class ConnectionPanel extends JPanel {
 
         JPanel serverStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         serverStatusPanel.add(new JLabel("Сервер:"));
-        connectionIndicator = new JLabel("отключено");
+        connectionIndicator = new JLabel("○ отключено");
         connectionIndicator.setForeground(Color.RED);
         serverStatusPanel.add(connectionIndicator);
         statusPanel.add(serverStatusPanel);

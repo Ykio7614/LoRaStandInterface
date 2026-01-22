@@ -41,6 +41,8 @@ public class ConnectionPanel extends JPanel {
     private final JButton connectServerBtn;
     private final JButton startMeasurementBtn;
     private final JLabel connectionIndicator;
+    private final JLabel masterIndicator;
+    private final JLabel slaverIndicator;
     private final DefaultTableModel sessionsTableModel;
     private final JTable sessionsTable;
     private final JButton addSessionBtn;
@@ -71,10 +73,34 @@ public class ConnectionPanel extends JPanel {
 
         JPanel leftTopPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
         connectServerBtn = new JButton("Подключиться к серверу");
-        connectionIndicator = new JLabel("Статус: отключено");
-        connectionIndicator.setForeground(Color.RED);
         leftTopPanel.add(connectServerBtn);
-        leftTopPanel.add(connectionIndicator);
+
+        JPanel statusPanel = new JPanel();
+        statusPanel.setBorder(BorderFactory.createTitledBorder("Статусы"));
+        statusPanel.setLayout(new GridLayout(3, 1, 0, 5));
+
+        JPanel serverStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        serverStatusPanel.add(new JLabel("Сервер:"));
+        connectionIndicator = new JLabel("отключено");
+        connectionIndicator.setForeground(Color.RED);
+        serverStatusPanel.add(connectionIndicator);
+        statusPanel.add(serverStatusPanel);
+
+        JPanel masterStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        masterStatusPanel.add(new JLabel("Master:"));
+        masterIndicator = new JLabel("○ отключено");
+        masterIndicator.setForeground(Color.RED);
+        masterStatusPanel.add(masterIndicator);
+        statusPanel.add(masterStatusPanel);
+
+        JPanel slaverStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
+        slaverStatusPanel.add(new JLabel("Slaver:"));
+        slaverIndicator = new JLabel("○ отключено");
+        slaverIndicator.setForeground(Color.RED);
+        slaverStatusPanel.add(slaverIndicator);
+        statusPanel.add(slaverStatusPanel);
+
+        leftTopPanel.add(statusPanel);
 
         JPanel rightTopPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
         addSessionBtn = new JButton("Добавить сессию");
@@ -138,53 +164,66 @@ public class ConnectionPanel extends JPanel {
         add(bottomPanel, gbc);
 
         connectServerBtn.addActionListener(e -> {
-            new Thread(() -> {
-                socketManager = new SocketManager();
-                socketManager.addListener(new SocketListener() {
-                    @Override
-                    public void onMessage(String message) {
-                        if (message.startsWith("SESSIONS:")) {
-                            final String sessionsStr = message.substring("SESSIONS:".length()).trim();
-                            SwingUtilities.invokeLater(() -> updateSessionsTable(sessionsStr));
-                        } else if (message.startsWith("MEASUREMENT:")) {
-                            final String measurementStr = message.substring("MEASUREMENT:".length()).trim();
-                            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\[(.*?)\\]");
-                            java.util.regex.Matcher matcher = pattern.matcher(measurementStr);
-                            if (matcher.find()) {
-                                String entry = matcher.group(1);
-                                String[] tokens = entry.split("\\s*,\\s*");
-                                if (tokens.length == 6 && dataPanel != null) {
-                                    SwingUtilities.invokeLater(() -> {
-                                        dataPanel.addMeasurementRow(tokens);
-                                    });
+            if ("Подключиться к серверу".equals(connectServerBtn.getText())) {
+                new Thread(() -> {
+                    socketManager = new SocketManager();
+                    socketManager.addListener(new SocketListener() {
+                        @Override
+                        public void onMessage(String message) {
+                            if (message.startsWith("SESSIONS:")) {
+                                final String sessionsStr = message.substring("SESSIONS:".length()).trim();
+                                SwingUtilities.invokeLater(() -> updateSessionsTable(sessionsStr));
+                            } else if (message.startsWith("MASTER_STATUS")) {
+                                String status = message.substring("MASTER_STATUS".length()).trim();
+                                SwingUtilities.invokeLater(() -> updateMasterStatus(status));
+                            } else if (message.startsWith("SLAVER_STATUS")) {
+                                String status = message.substring("SLAVER_STATUS".length()).trim();
+                                SwingUtilities.invokeLater(() -> updateSlaverStatus(status));
+                            } else if (message.startsWith("MEASUREMENT:")) {
+                                final String measurementStr = message.substring("MEASUREMENT:".length()).trim();
+                                java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\[(.*?)\\]");
+                                java.util.regex.Matcher matcher = pattern.matcher(measurementStr);
+                                if (matcher.find()) {
+                                    String entry = matcher.group(1);
+                                    String[] tokens = entry.split("\\s*,\\s*");
+                                    if (tokens.length == 6 && dataPanel != null) {
+                                        SwingUtilities.invokeLater(() -> {
+                                            dataPanel.addMeasurementRow(tokens);
+                                        });
+                                    }
                                 }
                             }
                         }
+
+                        @Override
+                        public void onDisconnect() {
+                            SwingUtilities.invokeLater(() -> {
+                                setConnectionStatus(false);
+                                JOptionPane.showMessageDialog(ConnectionPanel.this,
+                                        "Сервер отключил соединение",
+                                        "Отключение",
+                                        JOptionPane.WARNING_MESSAGE);
+                            });
+                        }
+                    });
+                    boolean connected;
+                    if (localPort > 0) {
+                        connected = socketManager.connect("localhost", 8082, localPort);
+                    } else {
+                        connected = socketManager.connect("localhost", 8082);
                     }
 
-                    @Override
-                    public void onDisconnect() {
-                        SwingUtilities.invokeLater(() -> {
-                            setConnectionStatus(false);
-                            JOptionPane.showMessageDialog(ConnectionPanel.this,
-                                    "Сервер отключил соединение",
-                                    "Отключение",
-                                    JOptionPane.WARNING_MESSAGE);
-                        });
+                    SwingUtilities.invokeLater(() -> setConnectionStatus(connected));
+                    if (connected) {
+                        socketManager.sendMessage("GET_MEASUREMENT_SESSIONS");
                     }
-                });
-                boolean connected;
-                if (localPort > 0) {
-                    connected = socketManager.connect("localhost", 8082, localPort);
-                } else {
-                    connected = socketManager.connect("localhost", 8082);
+                }).start();
+            } else {
+                if (socketManager != null) {
+                    socketManager.disconnect();
+                    setConnectionStatus(false);
                 }
-
-                SwingUtilities.invokeLater(() -> setConnectionStatus(connected));
-                if (connected) {
-                    socketManager.sendMessage("GET_MEASUREMENT_SESSIONS");
-                }
-            }).start();
+            }
         });
 
         startMeasurementBtn.addActionListener(e -> {
@@ -278,13 +317,36 @@ public class ConnectionPanel extends JPanel {
 
     public void setConnectionStatus(boolean connected) {
         if (connected) {
-            connectionIndicator.setText("Статус: подключено");
+            connectionIndicator.setText("● подключено");
             connectionIndicator.setForeground(Color.GREEN.darker());
+            connectServerBtn.setText("Отключиться от сервера");
         } else {
-            connectionIndicator.setText("Статус: отключено");
+            connectionIndicator.setText("○ отключено");
             connectionIndicator.setForeground(Color.RED);
+            connectServerBtn.setText("Подключиться к серверу");
         }
     }
+
+    private void updateMasterStatus(String status) {
+        if ("CONNECTED".equalsIgnoreCase(status)) {
+            masterIndicator.setText("● подключено");
+            masterIndicator.setForeground(Color.GREEN.darker());
+        } else {
+            masterIndicator.setText("○ отключено");
+            masterIndicator.setForeground(Color.RED);
+        }
+    }
+
+    private void updateSlaverStatus(String status) {
+        if ("CONNECTED".equalsIgnoreCase(status)) {
+            slaverIndicator.setText("● подключено");
+            slaverIndicator.setForeground(Color.GREEN.darker());
+        } else {
+            slaverIndicator.setText("○ отключено");
+            slaverIndicator.setForeground(Color.RED);
+        }
+    }
+
 
     private void updateSessionsTable(String sessionsStr) {
         sessionsTableModel.setRowCount(0);

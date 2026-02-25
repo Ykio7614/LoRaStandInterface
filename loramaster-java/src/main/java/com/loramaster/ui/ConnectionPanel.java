@@ -77,11 +77,11 @@ public class ConnectionPanel extends JPanel {
 
         JPanel statusPanel = new JPanel();
         statusPanel.setBorder(BorderFactory.createTitledBorder("Статусы"));
-        statusPanel.setLayout(new GridLayout(3, 1, 0, 5));
+        statusPanel.setLayout(new GridLayout(1, 3, 5, 0));
 
         JPanel serverStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
         serverStatusPanel.add(new JLabel("Сервер:"));
-        connectionIndicator = new JLabel("отключено");
+        connectionIndicator = new JLabel("○ отключено");
         connectionIndicator.setForeground(Color.RED);
         serverStatusPanel.add(connectionIndicator);
         statusPanel.add(serverStatusPanel);
@@ -94,7 +94,7 @@ public class ConnectionPanel extends JPanel {
         statusPanel.add(masterStatusPanel);
 
         JPanel slaverStatusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        slaverStatusPanel.add(new JLabel("Slaver:"));
+        slaverStatusPanel.add(new JLabel("Slave:"));
         slaverIndicator = new JLabel("○ отключено");
         slaverIndicator.setForeground(Color.RED);
         slaverStatusPanel.add(slaverIndicator);
@@ -102,7 +102,7 @@ public class ConnectionPanel extends JPanel {
 
         leftTopPanel.add(statusPanel);
 
-        JPanel rightTopPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
+        JPanel rightTopPanel = new JPanel(new GridLayout(2, 1, 0, 5));
         addSessionBtn = new JButton("Добавить сессию");
         removeSessionBtn = new JButton("Удалить сессию");
         rightTopPanel.add(addSessionBtn);
@@ -199,6 +199,7 @@ public class ConnectionPanel extends JPanel {
                         public void onDisconnect() {
                             SwingUtilities.invokeLater(() -> {
                                 setConnectionStatus(false);
+                                resetAllStatuses(); 
                                 JOptionPane.showMessageDialog(ConnectionPanel.this,
                                         "Сервер отключил соединение",
                                         "Отключение",
@@ -222,6 +223,7 @@ public class ConnectionPanel extends JPanel {
                 if (socketManager != null) {
                     socketManager.disconnect();
                     setConnectionStatus(false);
+                    resetAllStatuses();
                 }
             }
         });
@@ -346,6 +348,15 @@ public class ConnectionPanel extends JPanel {
             slaverIndicator.setForeground(Color.RED);
         }
     }
+
+    private void resetAllStatuses() {
+        masterIndicator.setText("○ отключено");
+        masterIndicator.setForeground(Color.RED);
+        
+        slaverIndicator.setText("○ отключено");
+        slaverIndicator.setForeground(Color.RED);
+    }
+
 
 
     private void updateSessionsTable(String sessionsStr) {

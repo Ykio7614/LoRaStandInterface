@@ -6,7 +6,7 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import javax.swing.table.TableColumn;
-import com.loramaster.ui.DataPanel;
+import javax.swing.event.ListSelectionEvent;
 
 
 /**
@@ -48,17 +48,25 @@ public class ConnectionPanel extends JPanel {
     private final JButton addSessionBtn;
     private final JButton removeSessionBtn;
 
-    private final JLabel sfLabel;
-    private final JTextField sfField;
-    private final JLabel txLabel;
-    private final JTextField txField;
-    private final JLabel bwLabel;
-    private final JTextField bwField;
-    private final JButton setSettingsBtn;
-
     private SocketManager socketManager;
     private DataPanel dataPanel;
     private int localPort;
+    private Integer confirmedSessionModelRow;
+    private boolean suppressSelectionHandler;
+    private PendingSettingsAck pendingSettingsAck;
+
+    private static final int SETTINGS_ACK_TIMEOUT_MS = 90_000;
+
+    private static class PendingSettingsAck {
+        private boolean acknowledged;
+        private final JDialog dialog;
+        private final Timer timeoutTimer;
+
+        private PendingSettingsAck(JDialog dialog, Timer timeoutTimer) {
+            this.dialog = dialog;
+            this.timeoutTimer = timeoutTimer;
+        }
+    }
 
     public ConnectionPanel(int localPort) {
         this.localPort = localPort;
@@ -120,7 +128,7 @@ public class ConnectionPanel extends JPanel {
         gbc.gridy = 1;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.BOTH;
-        String[] columnNames = {"ID", "Сессия", "Дата начала", "Дата последнего измерения", "Количество точек"};
+        String[] columnNames = {"ID", "Сессия", "Дата начала", "Дата последнего измерения", "Количество точек", "Настройки"};
         sessionsTableModel = new DefaultTableModel(columnNames, 0);
         sessionsTable = new JTable(sessionsTableModel);
         TableColumn idColumn = sessionsTable.getColumnModel().getColumn(0);
@@ -135,33 +143,15 @@ public class ConnectionPanel extends JPanel {
 
         JPanel bottomPanel = new JPanel(new BorderLayout());
 
-        JPanel leftBottomPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        sfLabel = new JLabel("SF:");
-        leftBottomPanel.add(sfLabel);
-        sfField = new JTextField(3);
-        leftBottomPanel.add(sfField);
-
-        txLabel = new JLabel("TX:");
-        leftBottomPanel.add(txLabel);
-        txField = new JTextField(3);
-        leftBottomPanel.add(txField);
-
-        bwLabel = new JLabel("BW:");
-        leftBottomPanel.add(bwLabel);
-        bwField = new JTextField(4);
-        leftBottomPanel.add(bwField);
-
-        setSettingsBtn = new JButton("Применить");
-        leftBottomPanel.add(setSettingsBtn);
-
         JPanel rightBottomPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
         startMeasurementBtn = new JButton("Измерять");
         rightBottomPanel.add(startMeasurementBtn);
 
-        bottomPanel.add(leftBottomPanel, BorderLayout.WEST);
         bottomPanel.add(rightBottomPanel, BorderLayout.EAST);
 
         add(bottomPanel, gbc);
+
+        sessionsTable.getSelectionModel().addListSelectionListener(this::onSessionSelectionChanged);
 
         connectServerBtn.addActionListener(e -> {
             if ("Подключиться к серверу".equals(connectServerBtn.getText())) {
@@ -179,6 +169,9 @@ public class ConnectionPanel extends JPanel {
                             } else if (message.startsWith("SLAVER_STATUS")) {
                                 String status = message.substring("SLAVER_STATUS".length()).trim();
                                 SwingUtilities.invokeLater(() -> updateSlaverStatus(status));
+                            } else if (message.startsWith("SETTINGS_ACK:")) {
+                                final String ackText = message.substring("SETTINGS_ACK:".length()).trim();
+                                SwingUtilities.invokeLater(() -> handleSettingsAck(ackText));
                             } else if (message.startsWith("MEASUREMENT:")) {
                                 final String measurementStr = message.substring("MEASUREMENT:".length()).trim();
                                 java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\[(.*?)\\]");
@@ -235,6 +228,9 @@ public class ConnectionPanel extends JPanel {
                     dataPanel.getTableModel().setRowCount(0);
                 }
                 int modelRow = sessionsTable.convertRowIndexToModel(viewRow);
+                if (!ensureSessionSettingsSent(modelRow)) {
+                    return;
+                }
                 String sessionId = (String) sessionsTableModel.getValueAt(modelRow, 0);
                 socketManager.sendMessage("START_MEASUREMENT: " + sessionId);
             } else {
@@ -287,26 +283,6 @@ public class ConnectionPanel extends JPanel {
         });
         
 
-        setSettingsBtn.addActionListener(e -> {
-            String sf = sfField.getText();
-            String tx = txField.getText();
-            String bw = bwField.getText();
-
-            if (sf.trim().isEmpty() || tx.trim().isEmpty() || bw.trim().isEmpty()) {
-                JOptionPane.showMessageDialog(ConnectionPanel.this, "Все поля настроек должны быть заполнены", "Ошибка", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
-            if (socketManager != null) {
-                String settingsCommand = "SET_SETTINGS: SF=" + sf + ", TX=" + tx + ", BW=" + bw;
-                socketManager.sendMessage(settingsCommand);
-                if (dataPanel != null) {
-                    dataPanel.setCurrentSettings("Настройки: SF=" + sf + ", TX=" + tx + ", BW=" + bw);
-                }
-            } else {
-                JOptionPane.showMessageDialog(ConnectionPanel.this, "Сначала подключитесь к серверу", "Ошибка", JOptionPane.ERROR_MESSAGE);
-            }
-        });
     }
 
     public JButton getConnectServerBtn() {
@@ -326,6 +302,15 @@ public class ConnectionPanel extends JPanel {
             connectionIndicator.setText("○ отключено");
             connectionIndicator.setForeground(Color.RED);
             connectServerBtn.setText("Подключиться к серверу");
+            if (pendingSettingsAck != null) {
+                pendingSettingsAck.timeoutTimer.stop();
+                pendingSettingsAck.dialog.dispose();
+                pendingSettingsAck = null;
+            }
+            if (dataPanel != null) {
+                dataPanel.setSelectedSessionName(null);
+                dataPanel.setCurrentSettings("");
+            }
         }
     }
 
@@ -365,10 +350,213 @@ public class ConnectionPanel extends JPanel {
         java.util.regex.Matcher matcher = pattern.matcher(sessionsStr);
         while (matcher.find()) {
             String entry = matcher.group(1);
-            String[] columns = entry.split("\\s*,\\s*");
-            if (columns.length == 5) {
-                sessionsTableModel.addRow(columns);
+            String[] columns = entry.split("\\s*,\\s*", 6);
+            if (columns.length >= 5) {
+                String settings = columns.length == 6 ? columns[5].trim() : "-";
+                if (settings.isEmpty()) {
+                    settings = "-";
+                }
+                sessionsTableModel.addRow(new Object[]{
+                        columns[0], columns[1], columns[2], columns[3], columns[4], settings
+                });
             }
+        }
+    }
+
+    private void onSessionSelectionChanged(ListSelectionEvent event) {
+        if (event.getValueIsAdjusting() || suppressSelectionHandler) {
+            return;
+        }
+
+        int viewRow = sessionsTable.getSelectedRow();
+        if (viewRow < 0) {
+            if (dataPanel != null) {
+                dataPanel.setSelectedSessionName(null);
+                dataPanel.setCurrentSettings("");
+            }
+            return;
+        }
+
+        int modelRow = sessionsTable.convertRowIndexToModel(viewRow);
+        if (!ensureSessionSettingsSent(modelRow)) {
+            restoreConfirmedSelection();
+            return;
+        }
+
+        confirmedSessionModelRow = modelRow;
+        String sessionName = String.valueOf(sessionsTableModel.getValueAt(modelRow, 1));
+        if (dataPanel != null) {
+            dataPanel.setSelectedSessionName(sessionName);
+        }
+    }
+
+    private boolean ensureSessionSettingsSent(int modelRow) {
+        if (socketManager == null) {
+            return false;
+        }
+
+        String originalSettings = String.valueOf(sessionsTableModel.getValueAt(modelRow, 5)).trim();
+        String settings = String.valueOf(sessionsTableModel.getValueAt(modelRow, 5)).trim();
+        if (settings.isEmpty() || "-".equals(settings)) {
+            settings = requestSessionSettings();
+            if (settings == null) {
+                return false;
+            }
+            sessionsTableModel.setValueAt(settings, modelRow, 5);
+        }
+
+        boolean ackReceived = sendSettingsWithAck(settings);
+        if (!ackReceived) {
+            sessionsTableModel.setValueAt(originalSettings.isEmpty() ? "-" : originalSettings, modelRow, 5);
+            return false;
+        }
+
+        if (dataPanel != null) {
+            dataPanel.setCurrentSettings("Настройки: " + settings);
+        }
+        return true;
+    }
+
+    private String requestSessionSettings() {
+        JTextField sfInput = new JTextField(5);
+        JTextField txInput = new JTextField(5);
+        JTextField bwInput = new JTextField(7);
+
+        JPanel panel = new JPanel(new GridLayout(0, 2, 5, 5));
+        panel.add(new JLabel("SF:"));
+        panel.add(sfInput);
+        panel.add(new JLabel("TX:"));
+        panel.add(txInput);
+        panel.add(new JLabel("BW:"));
+        panel.add(bwInput);
+
+        int result = JOptionPane.showConfirmDialog(
+                this,
+                panel,
+                "Введите настройки для сессии",
+                JOptionPane.OK_CANCEL_OPTION,
+                JOptionPane.PLAIN_MESSAGE
+        );
+
+        if (result != JOptionPane.OK_OPTION) {
+            return null;
+        }
+
+        String sf = sfInput.getText().trim();
+        String tx = txInput.getText().trim();
+        String bw = bwInput.getText().trim();
+
+        if (sf.isEmpty() || tx.isEmpty() || bw.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "Все поля настроек должны быть заполнены",
+                    "Ошибка",
+                    JOptionPane.ERROR_MESSAGE);
+            return requestSessionSettings();
+        }
+
+        return "SF=" + sf + ", TX=" + tx + ", BW=" + bw;
+    }
+
+    private boolean sendSettingsWithAck(String settings) {
+        if (socketManager == null) {
+            return false;
+        }
+
+        JDialog progressDialog = new JDialog(
+                SwingUtilities.getWindowAncestor(this),
+                "Применение настроек",
+                Dialog.ModalityType.APPLICATION_MODAL
+        );
+        progressDialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+        progressDialog.setLayout(new BorderLayout(10, 10));
+
+        JLabel messageLabel = new JLabel("Ожидание подтверждения SETTINGS_ACK от сервера...");
+        JProgressBar progressBar = new JProgressBar();
+        progressBar.setIndeterminate(true);
+
+        JPanel content = new JPanel(new BorderLayout(8, 8));
+        content.setBorder(BorderFactory.createEmptyBorder(12, 12, 12, 12));
+        content.add(messageLabel, BorderLayout.NORTH);
+        content.add(progressBar, BorderLayout.CENTER);
+        progressDialog.setContentPane(content);
+        progressDialog.pack();
+        progressDialog.setLocationRelativeTo(this);
+
+        Timer timeoutTimer = new Timer(SETTINGS_ACK_TIMEOUT_MS, e -> {
+            if (pendingSettingsAck != null) {
+                pendingSettingsAck.timeoutTimer.stop();
+                pendingSettingsAck.dialog.dispose();
+            }
+        });
+        timeoutTimer.setRepeats(false);
+
+        PendingSettingsAck request = new PendingSettingsAck(progressDialog, timeoutTimer);
+        pendingSettingsAck = request;
+
+        socketManager.sendMessage("SET_SETTINGS: " + settings);
+        timeoutTimer.start();
+
+        progressDialog.setVisible(true);
+
+        boolean acknowledged = request.acknowledged;
+        timeoutTimer.stop();
+        if (pendingSettingsAck == request) {
+            pendingSettingsAck = null;
+        }
+
+        if (!acknowledged) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Сервер не прислал SETTINGS_ACK за 1.5 минуты. Настройки возвращены в исходное состояние.",
+                    "Нет подтверждения настроек",
+                    JOptionPane.ERROR_MESSAGE
+            );
+        }
+
+        return acknowledged;
+    }
+
+    private void handleSettingsAck(String ackText) {
+        if (pendingSettingsAck == null) {
+            return;
+        }
+
+        pendingSettingsAck.acknowledged = true;
+        pendingSettingsAck.timeoutTimer.stop();
+        pendingSettingsAck.dialog.dispose();
+
+        JOptionPane.showMessageDialog(
+                this,
+                "Настройки подтверждены сервером:\n" + ackText,
+                "SETTINGS_ACK",
+                JOptionPane.INFORMATION_MESSAGE
+        );
+    }
+
+    private void restoreConfirmedSelection() {
+        suppressSelectionHandler = true;
+        try {
+            if (confirmedSessionModelRow != null && confirmedSessionModelRow < sessionsTableModel.getRowCount()) {
+                int restoreViewRow = sessionsTable.convertRowIndexToView(confirmedSessionModelRow);
+                if (restoreViewRow >= 0) {
+                    sessionsTable.setRowSelectionInterval(restoreViewRow, restoreViewRow);
+                    if (dataPanel != null) {
+                        String sessionName = String.valueOf(sessionsTableModel.getValueAt(confirmedSessionModelRow, 1));
+                        String settings = String.valueOf(sessionsTableModel.getValueAt(confirmedSessionModelRow, 5));
+                        dataPanel.setSelectedSessionName(sessionName);
+                        dataPanel.setCurrentSettings("Настройки: " + settings);
+                    }
+                    return;
+                }
+            }
+
+            sessionsTable.clearSelection();
+            if (dataPanel != null) {
+                dataPanel.setSelectedSessionName(null);
+                dataPanel.setCurrentSettings("");
+            }
+        } finally {
+            suppressSelectionHandler = false;
         }
     }
 }

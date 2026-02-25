@@ -11,11 +11,15 @@ import java.util.List;
 
 public class DataPanel extends JPanel {
     private final JTable packetTable;
+    private final JLabel selectedSessionLabel;
     private final JLabel currentSettingsLabel;
     private final List<Runnable> dataChangeListeners = new ArrayList<>(); // ✅ добавлено
 
     public DataPanel() {
         setLayout(new BorderLayout());
+
+        selectedSessionLabel = new JLabel("Сессия не выбрана");
+        add(selectedSessionLabel, BorderLayout.NORTH);
 
         // Таблица пакетов
         String[] columns = {"Время", "RSSI", "SNR", "hDop", "Широта", "Долгота"};
@@ -36,6 +40,14 @@ public class DataPanel extends JPanel {
 
     public void setCurrentSettings(String settingsText) {
         currentSettingsLabel.setText(settingsText);
+    }
+
+    public void setSelectedSessionName(String sessionName) {
+        if (sessionName == null || sessionName.trim().isEmpty()) {
+            selectedSessionLabel.setText("Сессия не выбрана");
+        } else {
+            selectedSessionLabel.setText("Выбранная сессия: " + sessionName);
+        }
     }
 
     // ✅ Добавлено: механизм уведомления об изменениях
